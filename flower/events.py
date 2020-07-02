@@ -1,6 +1,3 @@
-from __future__ import absolute_import
-from __future__ import with_statement
-
 import time
 import shelve
 import logging
@@ -9,22 +6,21 @@ import collections
 
 from functools import partial
 
+import boto3
+import botocore
 import celery
 
-from pkg_resources import parse_version
-
-from tornado.ioloop import PeriodicCallback
 from tornado.ioloop import IOLoop
+from tornado.ioloop import PeriodicCallback
+from tornado.concurrent import run_on_executor
 
 from celery.events import EventReceiver
 from celery.events.state import State
 
 from . import api
 
-try:
-    from collections import Counter
-except ImportError:
-    from .utils.backports.collections import Counter
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 
 from prometheus_client import Counter as PrometheusCounter, Histogram
 
@@ -75,6 +71,7 @@ class Events(threading.Thread):
     events_enable_interval = 5000
 
     def __init__(self, capp, db=None, persistent=False,
+                 persist_to_s3=False, s3_bucket=None,
                  enable_events=True, io_loop=None, **kwargs):
         threading.Thread.__init__(self)
         self.daemon = True
@@ -82,19 +79,37 @@ class Events(threading.Thread):
         self.io_loop = io_loop or IOLoop.instance()
         self.capp = capp
 
+        s3 = boto3.client('s3')
+        boto3.set_stream_logger('boto3.resources', logging.INFO)
+
         self.db = db
         self.persistent = persistent
+        self.persist_to_s3 = persist_to_s3
+        self.s3_bucket = s3_bucket
         self.enable_events = enable_events
         self.state = None
 
-        if self.persistent and parse_version(celery.__version__) < parse_version("3.0.15"):
-            logger.warning('Persistent mode is available with '
-                           'Celery 3.0.15 and later')
-            self.persistent = False
-
         if self.persistent:
             logger.debug("Loading state from '%s'...", self.db)
-            state = shelve.open(self.db)
+            state = None
+            if self.persist_to_s3:
+                logger.debug("Downloading '%s' from '%s'...", self.db,
+                                                           self.s3_bucket)
+                try:
+                    s3.download_file(Bucket=self.s3_bucket, Key=self.db,
+                                      Filename=self.db)
+                except botocore.exceptions.ClientError as e:
+                    if e.response['Error']['Code'] == "404":
+                        logger.error("File not found")
+                    if e.response['Error']['Code'] == "403":
+                        logger.error("Missing Authorization")
+                else:
+                    raise
+                if self.db:
+                    state = shelve.open(self.db)
+            else:
+                if self.db:
+                    state = shelve.open(self.db)
             if state:
                 self.state = state['events']
             state.close()
@@ -107,16 +122,25 @@ class Events(threading.Thread):
 
     def start(self):
         threading.Thread.start(self)
-        # Celery versions prior to 2 don't support enable_events
-        if self.enable_events and celery.VERSION[0] > 2:
+        if self.enable_events:
+            logger.debug("Starting enable events timer...")
             self.timer.start()
 
     def stop(self):
+        if self.enable_events:
+            logger.debug("Stopping enable events timer...")
+            self.timer.stop()
+
         if self.persistent:
             logger.debug("Saving state to '%s'...", self.db)
             state = shelve.open(self.db)
             state['events'] = self.state
             state.close()
+            if self.persist_to_s3:
+                logger.debug("Putting '%s' to S3 bucket 's3://%s'...",
+                             (self.db, self.s3_bucket))
+                s3.upload_file(Bucket=self.s3_bucket, Key=self.db,
+                               Filename=self.db)
 
     def run(self):
         try_interval = 1
@@ -131,7 +155,6 @@ class Events(threading.Thread):
                     try_interval = 1
                     logger.debug("Capturing events...")
                     recv.capture(limit=None, timeout=None, wakeup=True)
-
             except (KeyboardInterrupt, SystemExit):
                 try:
                     import _thread as thread
@@ -148,11 +171,7 @@ class Events(threading.Thread):
     def on_enable_events(self):
         # Periodically enable events for workers
         # launched after flower
-        try:
-            logger.debug("Enabling events...")
-            self.capp.control.enable_events()
-        except Exception as e:
-            logger.debug("Failed to enable events: '%s'", e)
+        self.io_loop.run_in_executor(None, self.capp.control.enable_events)
 
     def on_event(self, event):
         # Call EventsState.event in ioloop thread to avoid synchronization

@@ -1,5 +1,3 @@
-from __future__ import absolute_import
-
 import types
 
 from tornado.options import define
@@ -37,6 +35,8 @@ define("db", type=str, default='flower',
        help="flower database file")
 define("persistent", type=bool, default=False,
        help="enable persistent mode")
+define("persist_to_s3", type=bool, default=False,
+       help="if persistent is enabled, store db file in AWS S3")
 define("broker_api", type=str, default=None,
        help="inspect broker e.g. http://guest:guest@localhost:15672/api/")
 define("ca_certs", type=str, default=None,
@@ -45,6 +45,8 @@ define("certfile", type=str, default=None,
        help="SSL certificate file")
 define("keyfile", type=str, default=None,
        help="SSL key file")
+define("s3_bucket", type=str, default=None,
+       help="if persist_to_s3 is enabled, AWS S3 Bucket URI")
 define("xheaders", type=bool, default=False,
        help="enable support for the 'X-Real-Ip' and 'X-Scheme' headers.")
 define("auto_refresh", default=True,
