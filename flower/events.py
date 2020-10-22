@@ -80,7 +80,6 @@ class Events(threading.Thread):
         self.capp = capp
 
         s3 = boto3.client('s3')
-        boto3.set_stream_logger('boto3.resources', logging.INFO)
 
         self.db = db
         self.persistent = persistent
@@ -91,7 +90,6 @@ class Events(threading.Thread):
 
         if self.persistent:
             logger.debug("Loading state from '%s'...", self.db)
-            state = None
             if self.persist_to_s3:
                 logger.debug("Downloading '%s' from '%s'...", self.db,
                                                            self.s3_bucket)
