@@ -70,6 +70,8 @@ class EventsState(State):
 class Events(threading.Thread):
     events_enable_interval = 5000
 
+    s3 = boto3.client('s3')
+
     def __init__(self, capp, db=None, persistent=False,
                  persist_to_s3=False, s3_bucket=None,
                  enable_events=True, io_loop=None, **kwargs):
@@ -79,7 +81,6 @@ class Events(threading.Thread):
         self.io_loop = io_loop or IOLoop.instance()
         self.capp = capp
 
-        s3 = boto3.client('s3')
 
         self.db = db
         self.persistent = persistent
@@ -96,6 +97,8 @@ class Events(threading.Thread):
                 try:
                     s3.download_file(Bucket=self.s3_bucket, Key=self.db,
                                       Filename=self.db)
+                    state = shelve.open(self.db)
+                    print(state)
                 except botocore.exceptions.ClientError as e:
                     if e.response['Error']['Code'] == "404":
                         logger.error("File not found")
@@ -103,17 +106,17 @@ class Events(threading.Thread):
                         logger.error("Missing Authorization")
                 else:
                     raise
-                if self.db:
-                    state = shelve.open(self.db)
             else:
-                if self.db:
-                    state = shelve.open(self.db)
+                state = shelve.open(self.db)
+                print(state)
             if state:
                 self.state = state['events']
             state.close()
 
         if not self.state:
             self.state = EventsState(**kwargs)
+
+        print(self.state)
 
         self.timer = PeriodicCallback(self.on_enable_events,
                                       self.events_enable_interval)
