@@ -104,8 +104,6 @@ class Events(threading.Thread):
                         logger.error("State file not found, moving on...")
                     if e.response['Error']['Code'] == "403":
                         logger.error("Forbidden.")
-                else:
-                    raise
             else:
                 state = shelve.open(self.db)
                 logger.debug("No persistent state on S3, checking local file\
@@ -142,7 +140,7 @@ class Events(threading.Thread):
             state.close()
             if self.persist_to_s3:
                 logger.debug("Putting '%s' to S3 bucket 's3://%s'...",
-                             (self.db, self.s3_bucket))
+                             self.db, self.s3_bucket)
                 s3.upload_file(Bucket=self.s3_bucket, Key=self.db,
                                Filename=self.db)
 
