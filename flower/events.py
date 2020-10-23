@@ -26,6 +26,7 @@ from prometheus_client import Counter as PrometheusCounter, Histogram
 
 logger = logging.getLogger(__name__)
 
+s3 = boto3.client('s3')
 
 class PrometheusMetrics(object):
     events = PrometheusCounter('flower_events_total', "Number of events", ['worker', 'type', 'task'])
@@ -70,8 +71,6 @@ class EventsState(State):
 class Events(threading.Thread):
     events_enable_interval = 5000
 
-    s3 = boto3.client('s3')
-
     def __init__(self, capp, db=None, persistent=False,
                  persist_to_s3=False, s3_bucket=None,
                  enable_events=True, io_loop=None, **kwargs):
@@ -98,25 +97,28 @@ class Events(threading.Thread):
                     s3.download_file(Bucket=self.s3_bucket, Key=self.db,
                                       Filename=self.db)
                     state = shelve.open(self.db)
-                    print(state)
+                    logger.debug("Found state: %s", self.db)
                 except botocore.exceptions.ClientError as e:
                     if e.response['Error']['Code'] == "404":
-                        logger.error("File not found")
+                        logger.error("State file not found, moving on...")
                     if e.response['Error']['Code'] == "403":
-                        logger.error("Missing Authorization")
+                        logger.error("Forbidden.")
                 else:
                     raise
             else:
                 state = shelve.open(self.db)
-                print(state)
+                logger.debug("No persistent state on S3, checking local file\
+                             system.")
             if state:
                 self.state = state['events']
-            state.close()
+                logger.debug("State file found: %s", self.state)
+                state.close()
+                logger.debug("State successfully closed")
 
         if not self.state:
+            logger.debug("No state, writing EventState.")
             self.state = EventsState(**kwargs)
 
-        print(self.state)
 
         self.timer = PeriodicCallback(self.on_enable_events,
                                       self.events_enable_interval)
