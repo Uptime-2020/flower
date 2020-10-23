@@ -137,6 +137,8 @@ class Events(threading.Thread):
             logger.debug("Saving state to '%s'...", self.db)
             state = shelve.open(self.db)
             state['events'] = self.state
+            logger.debug("State file with following state successfully saved:\
+                         %s", state)
             state.close()
             if self.persist_to_s3:
                 logger.debug("Putting '%s' to S3 bucket 's3://%s'...",
