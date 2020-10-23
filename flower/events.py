@@ -89,6 +89,7 @@ class Events(threading.Thread):
         self.state = None
 
         if self.persistent:
+            state = None
             logger.debug("Loading state from '%s'...", self.db)
             if self.persist_to_s3:
                 logger.debug("Downloading '%s' from '%s'...", self.db,
