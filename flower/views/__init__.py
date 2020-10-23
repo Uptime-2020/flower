@@ -25,7 +25,7 @@ class BaseHandler(tornado.web.RequestHandler):
     def options(self):
         self.set_status(204)
         self.finish()
-        
+
     def render(self, *args, **kwargs):
         app_options = self.application.options
         functions = inspect.getmembers(template, inspect.isfunction)
@@ -64,9 +64,22 @@ class BaseHandler(tornado.web.RequestHandler):
             self.finish()
 
     def get_current_user(self):
+        # Prometheus/metrics endpoint should just use basic auth
+        if 'metrics' in self.request.path:
+            basic_auth = self.application.options.basic_auth
+            if basic_auth:
+                auth_header = self.request.headers.get("Authorization", "")
+                try:
+                    basic, credentials = auth_header.split()
+                    credentials = b64decode(credentials.encode()).decode()
+                    if basic != 'Basic' or credentials not in basic_auth:
+                        raise tornado.web.HTTPError(401)
+                except ValueError:
+                    raise tornado.web.HTTPError(401)
+
         # Basic Auth
         basic_auth = self.application.options.basic_auth
-        if basic_auth:
+        if basic_auth and 'metrics' not in self.request.path:
             auth_header = self.request.headers.get("Authorization", "")
             try:
                 basic, credentials = auth_header.split()
