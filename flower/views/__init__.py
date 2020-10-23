@@ -79,7 +79,8 @@ class BaseHandler(tornado.web.RequestHandler):
 
         # Basic Auth
         basic_auth = self.application.options.basic_auth
-        if basic_auth and 'metrics' not in self.request.path:
+        auth_provider = self.application.options.auth_provider
+        if basic_auth and not auth_provider:
             auth_header = self.request.headers.get("Authorization", "")
             try:
                 basic, credentials = auth_header.split()
