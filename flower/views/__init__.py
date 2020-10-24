@@ -77,6 +77,10 @@ class BaseHandler(tornado.web.RequestHandler):
                 except ValueError:
                     raise tornado.web.HTTPError(401)
 
+                # Return early if metrics + valid basic auth
+                return True
+
+
         # Basic Auth
         basic_auth = self.application.options.basic_auth
         auth_provider = self.application.options.auth_provider
