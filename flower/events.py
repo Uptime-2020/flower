@@ -34,6 +34,8 @@ logger = logging.getLogger(__name__)
 class PrometheusMetrics(object):
     events = PrometheusCounter('flower_events_total', "Number of events", ['worker', 'type', 'task'])
     runtime = Histogram('flower_task_runtime_seconds', "Task runtime", ['worker', 'task'])
+    queuetime = Histogram('flower_task_queuetime_seconds', "Task time in queue",
+                          ['worker', 'task'])
 
 
 class EventsState(State):
@@ -60,6 +62,16 @@ class EventsState(State):
             runtime = event.get('runtime', 0)
             if runtime:
                 self.metrics.runtime.labels(worker_name, task_name).observe(runtime)
+
+            task = self.tasks[task_id]
+            # eta can make "time in queue" look really scary as it is
+            # artifically queued
+            if task.eta is None and task.started is not None and\
+               task.received is not None:
+                queuetime = task.started - task.received
+                if queuetime:
+                    self.metrics.queuetime.labels(worker_name,
+                                                  task_name).observe(queuetime)
 
         # Send event to api subscribers (via websockets)
         classname = api.events.getClassName(event_type)
