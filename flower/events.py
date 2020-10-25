@@ -63,7 +63,7 @@ class EventsState(State):
             if runtime:
                 self.metrics.runtime.labels(worker_name, task_name).observe(runtime)
 
-            task = self.tasks[task_id]
+            task = self.tasks.get(event['uuid'])
             # eta can make "time in queue" look really scary as it is
             # artifically queued
             if task.eta is None and task.started is not None and\
