@@ -66,12 +66,12 @@ class EventsState(State):
             task = self.tasks.get(event['uuid'])
             # eta can make "time in queue" look really scary as it is
             # artifically queued
-            if task.eta is None and task.started is not None and\
-               task.received is not None:
+            if task and task.started and task.received and task.eta is None:
                 queuetime = task.started - task.received
-                if queuetime:
+                if queuetime and queuetime > 0:
                     self.metrics.queuetime.labels(worker_name,
                                                   task_name).observe(queuetime)
+
 
         # Send event to api subscribers (via websockets)
         classname = api.events.getClassName(event_type)
